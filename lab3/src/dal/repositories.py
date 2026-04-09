@@ -52,11 +52,21 @@ class EmployeeRepository(IEmployeeRepository):
     def __init__(self, session: Session) -> None:
         self._session = session
 
+    def get_all(self) -> list[Employee]:
+        return self._session.query(Employee).order_by(Employee.employee_id).all()
+
     def get_by_id(self, employee_id: str) -> Employee | None:
         return self._session.get(Employee, employee_id)
 
     def add(self, employee: Employee) -> None:
         self._session.add(employee)
+
+    def delete_by_id(self, employee_id: str) -> bool:
+        employee = self.get_by_id(employee_id)
+        if employee is None:
+            return False
+        self._session.delete(employee)
+        return True
 
 
 class ITSpecialistRepository(IITSpecialistRepository):
