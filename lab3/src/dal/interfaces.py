@@ -46,11 +46,19 @@ class IHRManagerRepository(ABC):
 
 class IEmployeeRepository(ABC):
     @abstractmethod
+    def get_all(self) -> list[Employee]:
+        pass
+
+    @abstractmethod
     def get_by_id(self, employee_id: str) -> Employee | None:
         pass
 
     @abstractmethod
     def add(self, employee: Employee) -> None:
+        pass
+
+    @abstractmethod
+    def delete_by_id(self, employee_id: str) -> bool:
         pass
 
 
