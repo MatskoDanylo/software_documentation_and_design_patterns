@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
+from src.bll.auth_service import AuthService
 from src.bll.employee_service import EmployeeService
+from src.pl.middleware import require_auth
 
 
-def create_employee_blueprint(employee_service: EmployeeService) -> Blueprint:
+def create_employee_blueprint(
+    employee_service: EmployeeService, auth_service: AuthService
+) -> Blueprint:
     employee_bp = Blueprint("employee", __name__)
 
     @employee_bp.get("/")
@@ -18,6 +22,7 @@ def create_employee_blueprint(employee_service: EmployeeService) -> Blueprint:
         return render_template("employee_list.html", employees=employees)
 
     @employee_bp.route("/employees/create", methods=["GET", "POST"])
+    @require_auth(auth_service)
     def create_employee():
         if request.method == "POST":
             form_data = {
@@ -49,6 +54,7 @@ def create_employee_blueprint(employee_service: EmployeeService) -> Blueprint:
         )
 
     @employee_bp.route("/employees/<string:emp_id>/edit", methods=["GET", "POST"])
+    @require_auth(auth_service)
     def edit_employee(emp_id: str):
         employee = employee_service.get_by_id(emp_id)
         if employee is None:
@@ -88,6 +94,7 @@ def create_employee_blueprint(employee_service: EmployeeService) -> Blueprint:
         )
 
     @employee_bp.post("/employees/<string:emp_id>/delete")
+    @require_auth(auth_service)
     def delete_employee(emp_id: str):
         deleted = employee_service.delete(emp_id)
         if deleted:

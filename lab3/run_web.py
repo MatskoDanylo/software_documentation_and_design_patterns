@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from src.bll.auth_service import AuthService
 from src.bll.employee_service import EmployeeService
 from src.dal.db import Base, create_session_factory, create_sqlite_engine
 from src.dal.repositories import EmployeeRepository, SQLAlchemyUnitOfWork
@@ -17,8 +18,9 @@ def main() -> None:
     employee_repository = EmployeeRepository(session)
     uow = SQLAlchemyUnitOfWork(session)
     employee_service = EmployeeService(employee_repository=employee_repository, uow=uow)
+    auth_service = AuthService()
 
-    app = create_app(employee_service)
+    app = create_app(employee_service, auth_service)
 
     try:
         app.run(debug=True)
