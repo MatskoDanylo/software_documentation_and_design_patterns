@@ -1,0 +1,29 @@
+{
+  "input_csv": "kpi-prifsma.csv",
+  "output_type": "firebase",
+  "console": {
+    "preview_rows": 5
+  },
+  "file": {
+    "format": "json",
+    "output_path": "output/kpi_data.json"
+  },
+  "kafka": {
+    "bootstrap_servers": ["127.0.0.1:9092"],
+    "topic": "kpi-topic",
+    "simulate_on_error": false
+  },
+  "redis": {
+    "host": "localhost",
+    "port": 6379,
+    "db": 0,
+    "key_prefix": "kpi",
+    "simulate_on_error": false
+  },
+  "firebase": {
+    "credentials_path": "firebase-key.json",
+    "database_url": "https://lab4-kpi-data-default-rtdb.firebaseio.com/",
+    "node_path": "/kpi_data",
+    "simulate_on_error": true
+  }
+}
