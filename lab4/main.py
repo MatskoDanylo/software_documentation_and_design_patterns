@@ -8,6 +8,7 @@ from data_reader import DataReader
 from strategies import (
     ConsoleOutputStrategy,
     FileOutputStrategy,
+    FirebaseOutputStrategy,
     KafkaOutputStrategy,
     OutputStrategy,
     RedisOutputStrategy,
@@ -67,7 +68,20 @@ def build_output_strategy(config: dict[str, Any], base_dir: Path) -> OutputStrat
             simulate_on_error=bool(redis_cfg.get("simulate_on_error", True)),
         )
 
-    supported_types = "console, file, kafka, redis"
+    if output_type == "firebase":
+        firebase_cfg = config.get("firebase", {})
+        credentials_path = resolve_path(
+            base_dir,
+            str(firebase_cfg.get("credentials_path", "firebase-key.json")),
+        )
+        return FirebaseOutputStrategy(
+            credentials_path=str(credentials_path),
+            database_url=str(firebase_cfg.get("database_url", "")),
+            node_path=str(firebase_cfg.get("node_path", "/kpi_data")),
+            simulate_on_error=bool(firebase_cfg.get("simulate_on_error", True)),
+        )
+
+    supported_types = "console, file, kafka, redis, firebase"
     raise ValueError(
         f"Unsupported output_type '{output_type}'. "
         f"Supported values: {supported_types}"

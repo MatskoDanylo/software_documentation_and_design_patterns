@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 
 Record = dict[str, Any]
+logger = logging.getLogger(__name__)
 
 
 class OutputStrategy(ABC):
@@ -91,30 +93,64 @@ class KafkaOutputStrategy(OutputStrategy):
         self.simulate_on_error = simulate_on_error
 
     def write(self, data: list[Record]) -> None:
+        if not data:
+            logger.info("No records to send to Kafka topic '%s'.", self.topic)
+            return
+
+        producer = None
         try:
             from kafka import KafkaProducer
 
             producer = KafkaProducer(
                 bootstrap_servers=self.bootstrap_servers,
                 value_serializer=lambda value: json.dumps(value).encode("utf-8"),
+                request_timeout_ms=5000,
+                api_version_auto_timeout_ms=5000,
             )
 
-            for row in data:
-                producer.send(self.topic, row)
+            if not producer.bootstrap_connected():
+                raise ConnectionError(
+                    f"Unable to connect to Kafka bootstrap servers: {self.bootstrap_servers}"
+                )
 
-            producer.flush()
-            producer.close()
-            print(f"Sent {len(data)} record(s) to Kafka topic '{self.topic}'.")
+            logger.info(
+                "Kafka connection established. Sending %d record(s) to topic '%s'.",
+                len(data),
+                self.topic,
+            )
+
+            futures = []
+            for row in data:
+                futures.append(producer.send(self.topic, row))
+
+            for future in futures:
+                future.get(timeout=10)
+
+            producer.flush(timeout=10)
+            logger.info("Sent %d record(s) to Kafka topic '%s'.", len(data), self.topic)
         except Exception as exc:
             if not self.simulate_on_error:
+                logger.exception("Kafka output failed and simulation mode is disabled.")
                 raise
             self._simulate_send(data, exc)
+        finally:
+            if producer is not None:
+                producer.close()
 
     def _simulate_send(self, data: list[Record], exc: Exception) -> None:
-        print(f"Kafka not available ({exc}). Running in simulation mode.")
+        logger.warning("Kafka not available (%s). Running in simulation mode.", exc)
         for index, row in enumerate(data[:3], start=1):
-            print(f"[Kafka simulation] topic={self.topic}, record={index}: {json.dumps(row)}")
-        print(f"Simulated sending {len(data)} record(s) to Kafka topic '{self.topic}'.")
+            logger.info(
+                "[Kafka simulation] topic=%s, record=%d: %s",
+                self.topic,
+                index,
+                json.dumps(row, ensure_ascii=False),
+            )
+        logger.info(
+            "Simulated sending %d record(s) to Kafka topic '%s'.",
+            len(data),
+            self.topic,
+        )
 
 
 class RedisOutputStrategy(OutputStrategy):
@@ -135,6 +171,14 @@ class RedisOutputStrategy(OutputStrategy):
         self.simulate_on_error = simulate_on_error
 
     def write(self, data: list[Record]) -> None:
+        if not data:
+            logger.info(
+                "No records to write to Redis with key prefix '%s'.",
+                self.key_prefix,
+            )
+            return
+
+        client = None
         try:
             import redis
 
@@ -143,26 +187,116 @@ class RedisOutputStrategy(OutputStrategy):
                 port=self.port,
                 db=self.db,
                 decode_responses=True,
+                socket_connect_timeout=3,
+                socket_timeout=3,
             )
 
-            pipeline = client.pipeline()
+            if not client.ping():
+                raise ConnectionError(f"Redis ping failed for {self.host}:{self.port}/{self.db}")
+
+            pipeline = client.pipeline(transaction=False)
             for index, row in enumerate(data, start=1):
                 key = f"{self.key_prefix}:{index}"
                 pipeline.set(key, json.dumps(row))
 
             pipeline.execute()
-            print(
-                f"Stored {len(data)} record(s) in Redis with key prefix "
-                f"'{self.key_prefix}:*'."
+            logger.info(
+                "Stored %d record(s) in Redis with key prefix '%s:*'.",
+                len(data),
+                self.key_prefix,
             )
         except Exception as exc:
             if not self.simulate_on_error:
+                logger.exception("Redis output failed and simulation mode is disabled.")
+                raise
+            self._simulate_write(data, exc)
+        finally:
+            if client is not None:
+                client.close()
+
+    def _simulate_write(self, data: list[Record], exc: Exception) -> None:
+        logger.warning("Redis not available (%s). Running in simulation mode.", exc)
+        for index, row in enumerate(data[:3], start=1):
+            key = f"{self.key_prefix}:{index}"
+            logger.info("[Redis simulation] key=%s, value=%s", key, json.dumps(row))
+        logger.info("Simulated saving %d record(s) to Redis.", len(data))
+
+
+class FirebaseOutputStrategy(OutputStrategy):
+    """Concrete Strategy: save rows to Firebase Realtime Database or simulate."""
+
+    def __init__(
+        self,
+        credentials_path: str,
+        database_url: str,
+        node_path: str = "/kpi_data",
+        simulate_on_error: bool = True,
+        app_name: str = "lab4-firebase",
+    ) -> None:
+        self.credentials_path = Path(credentials_path)
+        self.database_url = database_url.strip()
+        self.node_path = node_path if node_path.startswith("/") else f"/{node_path}"
+        self.simulate_on_error = simulate_on_error
+        self.app_name = app_name
+
+    def write(self, data: list[Record]) -> None:
+        if not data:
+            logger.info("No records to write to Firebase node '%s'.", self.node_path)
+            return
+
+        try:
+            self._write_to_firebase(data)
+            logger.info(
+                "Stored %d record(s) in Firebase Realtime Database node '%s'.",
+                len(data),
+                self.node_path,
+            )
+        except Exception as exc:
+            if not self.simulate_on_error:
+                logger.exception("Firebase output failed and simulation mode is disabled.")
                 raise
             self._simulate_write(data, exc)
 
+    def _write_to_firebase(self, data: list[Record]) -> None:
+        if not self.credentials_path.exists():
+            raise FileNotFoundError(
+                f"Firebase credentials file not found: {self.credentials_path}"
+            )
+        if not self.database_url:
+            raise ValueError("firebase.database_url is required.")
+
+        import firebase_admin
+        from firebase_admin import credentials, db
+
+        app = self._get_or_create_app(firebase_admin, credentials)
+        db.reference(self.node_path, app=app).set(data)
+
+    def _get_or_create_app(
+        self,
+        firebase_admin_module: Any,
+        credentials_module: Any,
+    ) -> Any:
+        try:
+            return firebase_admin_module.get_app(self.app_name)
+        except ValueError:
+            certificate = credentials_module.Certificate(str(self.credentials_path))
+            return firebase_admin_module.initialize_app(
+                certificate,
+                {"databaseURL": self.database_url},
+                name=self.app_name,
+            )
+
     def _simulate_write(self, data: list[Record], exc: Exception) -> None:
-        print(f"Redis not available ({exc}). Running in simulation mode.")
+        logger.warning("Firebase not available (%s). Running in simulation mode.", exc)
         for index, row in enumerate(data[:3], start=1):
-            key = f"{self.key_prefix}:{index}"
-            print(f"[Redis simulation] key={key}, value={json.dumps(row)}")
-        print(f"Simulated saving {len(data)} record(s) to Redis.")
+            logger.info(
+                "[Firebase simulation] node=%s, record=%d: %s",
+                self.node_path,
+                index,
+                json.dumps(row, ensure_ascii=False),
+            )
+        logger.info(
+            "Simulated writing %d record(s) to Firebase node '%s'.",
+            len(data),
+            self.node_path,
+        )
