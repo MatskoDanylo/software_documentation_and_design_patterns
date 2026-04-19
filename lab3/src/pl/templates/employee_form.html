@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if is_edit %}Edit Employee{% else %}Create Employee{% endif %}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h1 class="h4 mb-4">{% if is_edit %}Edit Employee{% else %}Create Employee{% endif %}</h1>
+
+                <form method="post">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label" for="employee_id">Employee ID</label>
+                            <input
+                                class="form-control"
+                                type="text"
+                                id="employee_id"
+                                name="employee_id"
+                                value="{{ employee.employee_id if employee else '' }}"
+                                {% if is_edit %}readonly{% endif %}
+                                required
+                            >
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="email">Email</label>
+                            <input
+                                class="form-control"
+                                type="email"
+                                id="email"
+                                name="email"
+                                value="{{ employee.email if employee else '' }}"
+                                required
+                            >
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="first_name">First name</label>
+                            <input
+                                class="form-control"
+                                type="text"
+                                id="first_name"
+                                name="first_name"
+                                value="{{ employee.first_name if employee else '' }}"
+                                required
+                            >
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="last_name">Last name</label>
+                            <input
+                                class="form-control"
+                                type="text"
+                                id="last_name"
+                                name="last_name"
+                                value="{{ employee.last_name if employee else '' }}"
+                                required
+                            >
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="start_date">Start date</label>
+                            <input
+                                class="form-control"
+                                type="date"
+                                id="start_date"
+                                name="start_date"
+                                value="{{ employee.start_date if employee else '' }}"
+                                required
+                            >
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="position">Position</label>
+                            <input
+                                class="form-control"
+                                type="text"
+                                id="position"
+                                name="position"
+                                value="{{ employee.position if employee else '' }}"
+                                required
+                            >
+                        </div>
+                    </div>
+
+                    <div class="mt-4 d-flex gap-2">
+                        <button class="btn btn-primary" type="submit">{{ submit_label }}</button>
+                        <a class="btn btn-outline-secondary" href="{{ url_for('employee.list_employees') }}">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
